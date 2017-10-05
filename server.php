@@ -279,20 +279,20 @@
 					}
 				}
 			}
+		}
 
-			// Handle removed clients.
-			foreach ($result["removed"] as $id => $result2)
+		// Handle removed clients.
+		foreach ($result["removed"] as $id => $result2)
+		{
+			if (isset($webtracker[$id]))
 			{
-				if (isset($webtracker[$id]))
-				{
-					echo "Web server client ID " . $id . " disconnected.\n";
+				echo "Web server client ID " . $id . " disconnected.\n";
 
-//					echo "Client ID " . $id . " disconnected.  Reason:\n";
-//					var_dump($result2["result"]);
-//					echo "\n";
+//				echo "Client ID " . $id . " disconnected.  Reason:\n";
+//				var_dump($result2["result"]);
+//				echo "\n";
 
-					unset($webtracker[$id]);
-				}
+				unset($webtracker[$id]);
 			}
 		}
 
