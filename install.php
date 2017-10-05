@@ -103,7 +103,7 @@
 		if (!function_exists("posix_geteuid"))  $config["serviceuser"] = "";
 		else
 		{
-			$serviceuser = CLI::GetUserInputWithArgs($args, "serviceuser", "System service user/group", "remote-api-server", "The next question asks what user the system service will run as.  Both a system user and group will be created.", $suppressoutput);
+			$serviceuser = CLI::GetUserInputWithArgs($args, "serviceuser", "System service user/group", "remoted-api-server", "The next question asks what user the system service will run as.  Both a system user and group will be created.", $suppressoutput);
 
 			$config["serviceuser"] = $serviceuser;
 
@@ -122,7 +122,7 @@
 
 	if (!isset($config["servicename"]))
 	{
-		$servicename = CLI::GetUserInputWithArgs($args, "servicename", "System service name", "remote-api-server", "The next question asks what the name of the system service will be.  Enter a single hyphen '-' to not install this software as a system service at this time.", $suppressoutput);
+		$servicename = CLI::GetUserInputWithArgs($args, "servicename", "System service name", "remoted-api-server", "The next question asks what the name of the system service will be.  Enter a single hyphen '-' to not install this software as a system service at this time.", $suppressoutput);
 
 		if ($servicename !== "-")
 		{
