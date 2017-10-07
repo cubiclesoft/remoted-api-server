@@ -35,6 +35,10 @@
 		$fp = $result["fp"];
 		$url = $result["url"];
 	}
+	else
+	{
+		$url = RemotedAPI::ExtractRealHost($url);
+	}
 
 	$web = new WebBrowser();
 
