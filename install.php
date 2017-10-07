@@ -112,13 +112,13 @@
 			system("useradd -r -s /bin/false " . escapeshellarg($serviceuser));
 			if ($suppressoutput)  ob_end_clean();
 			else  ob_end_flush();
-
-			// Allow the group to read the configuration.
-			@chgrp($rootpath . "/config.dat", $serviceuser);
 		}
 
 		RAS_SaveConfig($config);
 	}
+
+	// Allow the user to read the configuration.
+	if ($config["serviceuser"] !== "")  @chown($rootpath . "/config.dat", $config["serviceuser"]);
 
 	if (!isset($config["servicename"]))
 	{

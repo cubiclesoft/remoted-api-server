@@ -35,7 +35,7 @@
 			$args = array();
 			$options = array(
 				"nixuser" => $config["serviceuser"],
-				"nixgroup" => $config["servicegroup"]
+				"nixgroup" => $config["serviceuser"]
 			);
 
 			$result = $sm->Install($servicename, __FILE__, $args, $options, true);
