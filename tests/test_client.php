@@ -46,7 +46,7 @@
 		"fp" => $fp
 	);
 
-	$result = $web->Process($url . "/v1/some/api", "auto", $options);
+	$result = $web->Process($url . "/v1/some/api", $options);
 	if (!$result["success"] || $result["response"]["code"] != 200)
 	{
 		var_dump($result);
