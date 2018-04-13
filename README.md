@@ -5,6 +5,10 @@ Allows any standard TCP/IP server to be remoted with low-overhead TCP connectivi
 
 The Remoted API Server and SDK turn client/server architecture upside down and, in the process, completely bypasses most standard firewall policies.
 
+[![Donate](https://cubiclesoft.com/res/donate-shield.png)](https://cubiclesoft.com/donate/)
+
+[Original blog post](https://cubicspot.blogspot.com/2017/09/i-um-broke-stuff.html)
+
 Features
 --------
 
