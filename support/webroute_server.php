@@ -1,6 +1,6 @@
 <?php
 	// CubicleSoft PHP WebRouteServer class.
-	// (C) 2017 CubicleSoft.  All Rights Reserved.
+	// (C) 2018 CubicleSoft.  All Rights Reserved.
 
 	class WebRouteServer
 	{
@@ -166,6 +166,11 @@
 					$this->AcceptClient($client);
 					$this->AcceptClient($client2);
 
+					$client2->writedata .= $client->readdata;
+					$client->writedata .= $client2->readdata;
+					$client->readdata = "";
+					$client2->readdata = "";
+
 					// Adjust the WebRoute timeout of both clients to the minimum agreed upon timeout.
 					$timeout = (isset($client->headers["Webroute-Timeout"]) && is_numeric($client->headers["Webroute-Timeout"]) && (int)$client->headers["Webroute-Timeout"] > $client->timeout ? (int)$client->headers["Webroute-Timeout"] : $client->timeout);
 					$timeout2 = (isset($client2->headers["Webroute-Timeout"]) && is_numeric($client2->headers["Webroute-Timeout"]) && (int)$client2->headers["Webroute-Timeout"] > $client2->timeout ? (int)$client2->headers["Webroute-Timeout"] : $client2->timeout);
@@ -195,7 +200,7 @@
 
 			foreach ($this->clients as $id => $client)
 			{
-				if ($client->state === "request" || $client->state === "waiting" || ($client->state === "linked" && strlen($this->clients[$client->linkid]->writedata) < $this->maxchunksize))  $readfps[$prefix . "wr_c_" . $id] = $client->fp;
+				if ($client->state === "request" || ($client->state === "waiting" && $client->lastts < microtime(true) - 1) || ($client->state === "linked" && strlen($this->clients[$client->linkid]->writedata) < $this->maxchunksize))  $readfps[$prefix . "wr_c_" . $id] = $client->fp;
 
 				if ($client->writedata !== "")  $writefps[$prefix . "wr_c_" . $id] = $client->fp;
 
@@ -318,12 +323,19 @@
 				}
 				else if ($client->state === "waiting")
 				{
-					$result2 = @fread($fp, 0);
+					$result2 = @fread($fp, 1);
 					if ($result2 === false || ($result2 === "" && feof($fp)))
 					{
 						$this->RemoveClient($id);
 
 						$result["removed"][$id] = array("result" => array("success" => false, "error" => self::WRTranslate("Client fread() failure.  Most likely cause:  Connection failure."), "errorcode" => "fread_failed"), "client" => $client);
+					}
+					else
+					{
+						$client->readdata .= $result2;
+
+						$client->lastts = microtime(true);
+						$client->rawrecvsize += strlen($result2);
 					}
 				}
 				else if ($client->state === "request")
@@ -415,6 +427,30 @@
 						$this->RemoveClient($id);
 
 						$result["removed"][$id] = array("result" => array("success" => false, "error" => self::WRTranslate("Client fwrite() failure.  Most likely cause:  Connection failure."), "errorcode" => "fwrite_failed"), "client" => $client);
+					}
+					else if ($result2 === 0)
+					{
+						// Verify that the connection is still okay (doesn't matter if any data is read in).
+						$result2 = @fread($fp, 1);
+						if ($result2 === false || ($result2 === "" && feof($fp)))
+						{
+							$this->RemoveClient($id);
+
+							$result["removed"][$id] = array("result" => array("success" => false, "error" => self::WRTranslate("Client fread() failure.  Most likely cause:  Connection failure."), "errorcode" => "fread_failed"), "client" => $client);
+						}
+						else if ($client->state === "linked")
+						{
+							$this->clients[$client->linkid]->writedata .= $result2;
+
+							$client->lastts = microtime(true);
+							$client->rawrecvsize += strlen($result2);
+
+							$result["clients"][$id] = $client;
+						}
+						else
+						{
+							$client->readdata .= $result2;
+						}
 					}
 					else
 					{

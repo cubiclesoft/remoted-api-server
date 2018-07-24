@@ -10,7 +10,7 @@
 	// Compression support requires the CubicleSoft PHP DeflateStream class.
 	class WebServer
 	{
-		private $fp, $ssl, $initclients, $clients, $nextclientid;
+		private $fp, $ssl, $initclients, $clients, $readyclients, $nextclientid;
 		private $defaulttimeout, $defaultclienttimeout, $maxrequests, $defaultclientoptions, $usegzip, $cachedir;
 
 		public function __construct()
@@ -26,6 +26,7 @@
 			$this->ssl = false;
 			$this->initclients = array();
 			$this->clients = array();
+			$this->readyclients = array();
 			$this->nextclientid = 1;
 
 			$this->defaulttimeout = 30;
@@ -130,6 +131,7 @@
 
 				$this->initclients = array();
 				$this->clients = array();
+				$this->readyclients = array();
 				$this->fp = false;
 				$this->ssl = false;
 			}
@@ -329,13 +331,14 @@
 													{
 														if ($client->currfile !== false)  $client->files[$client->currfile]->Close();
 
-														$filename = $this->cachedir . $id . "_" . count($client->files) . ".dat";
+														$filename = $this->cachedir . $id . "_" . $client->requests . "_" . count($client->files) . ".dat";
 														$client->currfile = $filename;
 
-														@unlink($filename);
+														if (!is_dir($this->cachedir))  @mkdir($this->cachedir, 0770, true);
+														if (file_exists($filename))  @unlink($filename);
 														$tempfile = new WebServer_TempFile();
 														$tempfile->filename = $filename;
-														$tempfile->Open();
+														if ($tempfile->Open() === false)  return false;
 
 														$client->files[$filename] = $tempfile;
 														$this->AddClientRecvHeader($id, $client->mime_contentdisposition["name"], $tempfile);
@@ -400,13 +403,14 @@
 						{
 							$client->contenthandled = false;
 
-							$filename = $this->cachedir . $id . ".dat";
+							$filename = $this->cachedir . $id . "_" . $client->requests . ".dat";
 							$client->currfile = $filename;
 
-							@unlink($filename);
+							if (!is_dir($this->cachedir))  @mkdir($this->cachedir, 0770, true);
+							if (file_exists($filename))  @unlink($filename);
 							$tempfile = new WebServer_TempFile();
 							$tempfile->filename = $filename;
-							$tempfile->Open();
+							if ($tempfile->Open() === false)  return false;
 
 							$client->files[$filename] = $tempfile;
 							$client->files[$filename]->Write($client->readdata);
@@ -452,6 +456,9 @@
 					if ($timeout > 1)  $timeout = 1;
 				}
 			}
+
+			if (count($this->readyclients))  $timeout = 0;
+
 			foreach ($this->clients as $id => $client)
 			{
 				if ($client->httpstate !== false)
@@ -593,6 +600,10 @@
 			// Handle new connections.
 			$this->HandleNewConnections($readfps, $writefps);
 
+			// Handle ready clients.
+			foreach ($this->readyclients as $id => $fp)  $readfps["http_c_" . $id] = $fp;
+			$this->readyclients = array();
+
 			// Handle clients in the read queue.
 			foreach ($readfps as $cid => $fp)
 			{
@@ -682,6 +693,7 @@
 					else if ($client->requestcomplete === false && $client->httpstate["state"] !== "request_line" && $client->httpstate["state"] !== "headers")
 					{
 						// Allows the caller an opportunity to adjust some client options based on inputs on a per-client basis (e.g. recvlimit).
+						$this->readyclients[$id] = $fp;
 						$result["clients"][$id] = $client;
 					}
 				}
@@ -764,6 +776,8 @@
 
 							foreach ($client->files as $filename => $tempfile)
 							{
+								$client->files[$filename]->Free();
+
 								unset($client->files[$filename]);
 							}
 
@@ -840,7 +854,7 @@
 								$result2["rawrecv"] = "";
 							}
 
-							$client->httpstate = HTTP::InitResponseState($client->fp, $debug, $options, $startts, $timeout, $result2, false, false);
+							$client->httpstate = HTTP::InitResponseState($client->fp, $debug, $options, $startts, $timeout, $result2, false, "", false);
 							$client->mode = "handle_request";
 
 							$client->lastts = microtime(true);
@@ -896,6 +910,7 @@
 			$client = $this->clients[$id];
 
 			unset($this->clients[$id]);
+			unset($this->readyclients[$id]);
 
 			return $client;
 		}
@@ -907,15 +922,15 @@
 				$client = $this->clients[$id];
 
 				// Remove the client.
-				foreach ($client->files as $filename => $fp2)
+				foreach ($client->files as $filename => $tempfile)
 				{
-					@fclose($fp2);
-					@unlink($filename);
+					$client->files[$filename]->Free();
 				}
 
 				if ($client->fp !== false)  @fclose($client->fp);
 
 				unset($this->clients[$id]);
+				unset($this->readyclients[$id]);
 			}
 		}
 	}
@@ -926,18 +941,11 @@
 	{
 		public $fp, $filename;
 
-		public function __destruct()
-		{
-			$this->Close();
-
-			@unlink($this->filename);
-		}
-
 		public function Open()
 		{
 			$this->Close();
 
-			$this->fp = @fopen($this->filename, "w+b");
+			$this->fp = fopen($this->filename, "w+b");
 
 			return $this->fp;
 		}
@@ -946,7 +954,7 @@
 		{
 			if ($this->fp === false)  return false;
 
-			$data = @fread($this->fp, $size);
+			$data = fread($this->fp, $size);
 			if ($data === false || feof($this->fp))  $this->Close();
 			if ($data === false)  $data = "";
 
@@ -960,9 +968,16 @@
 
 		public function Close()
 		{
-			if (is_resource($this->fp))  @fclose($this->fp);
+			if (is_resource($this->fp))  fclose($this->fp);
 
 			$this->fp = false;
+		}
+
+		public function Free()
+		{
+			$this->Close();
+
+			unlink($this->filename);
 		}
 	}
 
