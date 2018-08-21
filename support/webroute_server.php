@@ -126,6 +126,9 @@
 			$client->rawrecvsize = 0;
 			$client->rawsendsize = 0;
 
+			// Intended for application storage.
+			$client->appdata = false;
+
 			$this->clients[$this->nextclientid] = $client;
 
 			$this->nextclientid++;
@@ -554,6 +557,8 @@
 			$client2->method = $method;
 			$client2->path = $path;
 			$client2->url = "wr://" . (isset($client->headers["Host"]) ? $client->headers["Host"] : "localhost") . $path;
+
+			$client2->appdata = $client->appdata;
 
 			$this->ProcessInitialResponse($client2);
 
