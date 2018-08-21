@@ -1,6 +1,6 @@
 <?php
 	// Remoted API server main service.
-	// (C) 2017 CubicleSoft.  All Rights Reserved.
+	// (C) 2018 CubicleSoft.  All Rights Reserved.
 
 	if (!isset($_SERVER["argc"]) || !$_SERVER["argc"])
 	{
@@ -88,10 +88,7 @@
 	$wsserver = new WebSocketServer();
 	$wrserver = new WebRouteServer();
 
-	$webtracker = array();
 	$pathmap = array();
-	$wstracker = array();
-	$wrtracker = array();
 
 	echo "Starting server...\n";
 	$result = $webserver->Start($config["host"], $config["port"], false);
@@ -129,28 +126,28 @@
 		// Handle active clients.
 		foreach ($result["clients"] as $id => $client)
 		{
-			if (!isset($webtracker[$id]))
+			if ($client->appdata === false)
 			{
 				echo "Webserver client ID " . $id . " connected.\n";
 
-				$webtracker[$id] = array("mode" => false, "path" => false);
+				$client->appdata = array("mode" => false, "path" => false);
 			}
 
 			// Check for a valid API key.
-			if ($webtracker[$id]["mode"] === false && isset($client->headers["X-Remoted-Apikey"]))
+			if ($client->appdata["mode"] === false && isset($client->headers["X-Remoted-Apikey"]))
 			{
 				$apikey = $client->headers["X-Remoted-Apikey"];
 
-				if (Str::CTstrcmp($config["client_apikey"], $apikey) == 0)  $webtracker[$id]["mode"] = "client";
-				else if (Str::CTstrcmp($config["server_apikey"], $apikey) == 0)  $webtracker[$id]["mode"] = "server";
+				if (Str::CTstrcmp($config["client_apikey"], $apikey) == 0)  $client->appdata["mode"] = "client";
+				else if (Str::CTstrcmp($config["server_apikey"], $apikey) == 0)  $client->appdata["mode"] = "server";
 
-				if ($webtracker[$id]["mode"] !== false)  echo "Valid " . $webtracker[$id]["mode"] . " API key used.\n";
+				if ($client->appdata["mode"] !== false)  echo "Valid " . $client->appdata["mode"] . " API key used.\n";
 			}
 
-			if ($webtracker[$id]["mode"] !== false && $webtracker[$id]["path"] === false)
+			if ($client->appdata["mode"] !== false && $client->appdata["path"] === false)
 			{
 				$url = HTTP::ExtractURL($client->url);
-				$webtracker[$id]["path"] = $url["path"];
+				$client->appdata["path"] = $url["path"];
 			}
 
 			// Wait until the request is complete before fully processing inputs.
@@ -159,7 +156,7 @@
 				// Prevent proxies from doing bad things.
 				$client->SetResponseNoCache();
 
-				if ($webtracker[$id]["mode"] === false)
+				if ($client->appdata["mode"] === false)
 				{
 					echo "Missing API key.\n";
 
@@ -168,7 +165,7 @@
 					$client->AddResponseContent(json_encode(array("success" => false, "error" => "Invalid or missing 'X-Remoted-APIKey' header.", "errorcode" => "invalid_missing_apikey")));
 					$client->FinalizeResponse();
 				}
-				else if ($webtracker[$id]["path"] === false)
+				else if ($client->appdata["path"] === false)
 				{
 					echo "Unknown or invalid path.\n";
 
@@ -177,39 +174,38 @@
 					$client->AddResponseContent(json_encode(array("success" => false, "error" => "Unknown or invalid path.  Bad request.", "errorcode" => "invalid_request_path")));
 					$client->FinalizeResponse();
 				}
-				else if ($webtracker[$id]["mode"] === "server")
+				else if ($client->appdata["mode"] === "server")
 				{
 					// Handle WebRoute upgrade requests.
 					$id2 = $wrserver->ProcessWebServerClientUpgrade($webserver, $client, true);
 					if ($id2 !== false)
 					{
-						echo "Webserver client ID " . $id . " upgraded to WebRoute.  WebRoute client ID is " . $id2 . ".\n";
-
-						$wrtracker[$id2] = $webtracker[$id];
 						$client2 = $wrserver->GetClient($id2);
-
-						unset($webtracker[$id]);
 
 						// Clean up the waiting queue.
 						if ($client2->linkid !== false)
 						{
-							$id3 = $pathmap[$wrtracker[$id2]["path"]];
-							unset($wstracker[$id3]["related"][$client2->linkid]);
+							$id3 = $pathmap[$client2->appdata["path"]];
+							$client3 = $wsserver->GetClient($id3);
+
+							unset($client3->appdata["waiting"][$client2->linkid]);
 						}
+
+						echo "Webserver client ID " . $id . " upgraded to WebRoute.  WebRoute client ID is " . $id2 . ".\n";
 					}
 					else
 					{
 						// Handle WebSocket upgrade requests.
-						if (!isset($pathmap[$webtracker[$id]["path"]]))  $id2 = $wsserver->ProcessWebServerClientUpgrade($webserver, $client);
+						if (!isset($pathmap[$client->appdata["path"]]))  $id2 = $wsserver->ProcessWebServerClientUpgrade($webserver, $client);
 						if ($id2 !== false)
 						{
-							echo "Webserver client ID " . $id . " upgraded to WebSocket.  WebSocket client ID is " . $id2 . ".  Listening on '" . $webtracker[$id]["path"] . "'.\n";
+							$client2 = $wsserver->GetClient($id2);
 
-							$wstracker[$id2] = $webtracker[$id];
-							$wstracker[$id2]["waiting"] = array();
-							$pathmap[$wstracker[$id2]["path"]] = $id2;
+							$client2->appdata["waiting"] = array();
 
-							unset($webtracker[$id]);
+							$pathmap[$client2->appdata["path"]] = $id2;
+
+							echo "Webserver client ID " . $id . " upgraded to WebSocket.  WebSocket client ID is " . $id2 . ".  Listening on '" . $client2->appdata["path"] . "'.\n";
 						}
 						else
 						{
@@ -223,7 +219,7 @@
 							$client->AddResponseContent(json_encode($result2));
 							$client->FinalizeResponse();
 
-							$webtracker[$id]["path"] = false;
+							$client->appdata["path"] = false;
 						}
 					}
 				}
@@ -231,18 +227,15 @@
 				{
 					// Handle WebRoute upgrade requests.
 					$ipaddr = $client->ipaddr;
-					$id2 = (isset($pathmap[$webtracker[$id]["path"]]) ? $wrserver->ProcessWebServerClientUpgrade($webserver, $client) : false);
+					$id2 = (isset($pathmap[$client->appdata["path"]]) ? $wrserver->ProcessWebServerClientUpgrade($webserver, $client) : false);
 					if ($id2 !== false)
 					{
-						echo "Webserver client ID " . $id . " upgraded to WebRoute.  WebRoute client ID is " . $id2 . ".\n";
-
-						$wrtracker[$id2] = $webtracker[$id];
 						$client2 = $wrserver->GetClient($id2);
 
-						unset($webtracker[$id]);
+						echo "Webserver client ID " . $id . " upgraded to WebRoute.  WebRoute client ID is " . $id2 . ".\n";
 
 						// Notify the appropriate WebSocket server.
-						$id3 = $pathmap[$wrtracker[$id2]["path"]];
+						$id3 = $pathmap[$client2->appdata["path"]];
 						$client3 = $wsserver->GetClient($id3);
 
 						$data = array(
@@ -253,11 +246,11 @@
 
 						$client3->websocket->Write(json_encode($data, JSON_UNESCAPED_SLASHES), WebSocket::FRAMETYPE_TEXT);
 
-						$wstracker[$id3]["waiting"][$id2] = true;
+						$client3->appdata["waiting"][$id2] = true;
 					}
 					else
 					{
-						if (!isset($pathmap[$webtracker[$id]["path"]]))
+						if (!isset($pathmap[$client->appdata["path"]]))
 						{
 							$result2 = array("success" => false, "error" => "Requested destination does not exist at this time.", "errorcode" => "missing_destination");
 
@@ -275,7 +268,7 @@
 						$client->AddResponseContent(json_encode($result2));
 						$client->FinalizeResponse();
 
-						$webtracker[$id]["path"] = false;
+						$client->appdata["path"] = false;
 					}
 				}
 			}
@@ -284,15 +277,13 @@
 		// Handle removed clients.
 		foreach ($result["removed"] as $id => $result2)
 		{
-			if (isset($webtracker[$id]))
+			if ($result2["client"]->appdata !== false)
 			{
 				echo "Web server client ID " . $id . " disconnected.\n";
 
 //				echo "Client ID " . $id . " disconnected.  Reason:\n";
 //				var_dump($result2["result"]);
 //				echo "\n";
-
-				unset($webtracker[$id]);
 			}
 		}
 
@@ -314,25 +305,24 @@
 
 		foreach ($result["removed"] as $id => $result2)
 		{
-			if (isset($wstracker[$id]))
+			$client = $result2["client"];
+
+			if ($client->appdata !== false)
 			{
 				echo "WebSocket client ID " . $id . " disconnected.\n";
 
 				// Remove the path.
-				unset($pathmap[$wstracker[$id]["path"]]);
+				unset($pathmap[$client->appdata["path"]]);
 
 				// Disconnect waiting WebRoute clients so they don't timeout.
-				foreach ($wstracker[$id]["waiting"] as $id2 => $val)
+				foreach ($client->appdata["waiting"] as $id2 => $val)
 				{
 					$wrserver->RemoveClient($id2);
-					unset($wrtracker[$id2]);
 				}
 
 //				echo "WebSocket client ID " . $id . " disconnected.  Reason:\n";
 //				var_dump($result2["result"]);
 //				echo "\n";
-
-				unset($wstracker[$id]);
 			}
 		}
 
@@ -341,22 +331,24 @@
 
 		foreach ($result["removed"] as $id => $result2)
 		{
-			if (isset($wrtracker[$id]))
+			$client = $result2["client"];
+
+			if ($client->appdata !== false)
 			{
 				echo "WebRoute client ID " . $id . " disconnected.\n";
 
 				// Remove from the associated WebSocket waiting queue.
-				if (isset($pathmap[$wrtracker[$id]["path"]]))
+				if (isset($pathmap[$client->appdata["path"]]))
 				{
-					$id2 = $pathmap[$wrtracker[$id]["path"]];
-					unset($wstracker[$id2]["waiting"][$id]);
+					$id2 = $pathmap[$client->appdata["path"]];
+					$client2 = $wsserver->GetClient($id2);
+
+					unset($client2->appdata["waiting"][$id]);
 				}
 
 //				echo "WebRoute client ID " . $id . " disconnected.  Reason:\n";
 //				var_dump($result2["result"]);
 //				echo "\n";
-
-				unset($wrtracker[$id]);
 			}
 		}
 
