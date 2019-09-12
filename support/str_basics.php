@@ -1,26 +1,18 @@
 <?php
 	// CubicleSoft Basic PHP String helper/processing functions.
-	// (C) 2016 CubicleSoft.  All Rights Reserved.
+	// (C) 2018 CubicleSoft.  All Rights Reserved.
 
 	class Str
 	{
-		private static function ProcPOSTStr($data)
-		{
-			$data = trim($data);
-			if (get_magic_quotes_gpc())  $data = stripslashes($data);
-
-			return $data;
-		}
-
-		private static function ProcessSingleInput($data)
+		protected static function ProcessSingleInput($data)
 		{
 			foreach ($data as $key => $val)
 			{
-				if (is_string($val))  $_REQUEST[$key] = self::ProcPOSTStr($val);
+				if (is_string($val))  $_REQUEST[$key] = trim($val);
 				else if (is_array($val))
 				{
 					$_REQUEST[$key] = array();
-					foreach ($val as $key2 => $val2)  $_REQUEST[$key][$key2] = (is_string($val2) ? self::ProcPOSTStr($val2) : $val2);
+					foreach ($val as $key2 => $val2)  $_REQUEST[$key][$key2] = (is_string($val2) ? trim($val2) : $val2);
 				}
 				else  $_REQUEST[$key] = $val;
 			}
@@ -152,6 +144,11 @@
 			if ($num < 1125899906842624.0)  return str_replace(".0 ", "", number_format($num / 1099511627776.0, 1)) . " TB";
 
 			return str_replace(".0 ", "", number_format($num / 1125899906842624.0, 1)) . " PB";
+		}
+
+		public static function JSSafe($data)
+		{
+			return str_replace(array("'", "\r", "\n"), array("\\'", "\\r", "\\n"), $data);
 		}
 	}
 ?>
