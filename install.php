@@ -25,8 +25,7 @@
 		"rules" => array(
 			"suppressoutput" => array("arg" => false),
 			"help" => array("arg" => false)
-		),
-		"userinput" => "="
+		)
 	);
 	$args = CLI::ParseCommandLine($options);
 
